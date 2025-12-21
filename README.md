@@ -1,4 +1,4 @@
-# webfetch
+# webfetch-mcp
 
 MCP server that fetches URLs and converts HTML to clean Markdown.
 
