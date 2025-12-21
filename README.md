@@ -6,7 +6,7 @@ MCP server that fetches URLs and converts HTML to clean Markdown.
 
 ### Option 1: Download Pre-built Binary
 
-Download the latest binary for your platform from [GitHub Releases](https://github.com/benoute/fetchurl-mcp/releases).
+Download the latest binary for your platform from [GitHub Releases](https://github.com/benoute/webfetch-mcp/releases).
 
 | Platform     | Binary                      |
 |--------------|-----------------------------|
