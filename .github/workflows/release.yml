@@ -1,0 +1,86 @@
+name: Release
+
+env:
+  BIN_NAME: "webfetch-mcp"
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Set up Zig
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Build static binary
+        run: |
+          TARGET=${{ matrix.arch == 'amd64' && 'x86_64-linux-musl' || 'aarch64-linux-musl' }}
+          export CGO_ENABLED=1
+          export CC="zig cc -target $TARGET"
+          export CXX="zig c++ -target $TARGET"
+          export GOOS=linux
+          export GOARCH=${{ matrix.arch }}
+          go build -ldflags '-linkmode external -extldflags "-static"' -o ${{ env.BIN_NAME }}-linux-${{ matrix.arch }} ./cmd/${{ env.BIN_NAME }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BIN_NAME }}-linux-${{ matrix.arch }}
+          path: ${{ env.BIN_NAME }}-linux-${{ matrix.arch }}
+
+  build-macos:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-15-intel
+            arch: amd64
+          - os: macos-latest
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Build binary
+        run: go build -o ${{ env.BIN_NAME }}-darwin-${{ matrix.arch }} ./cmd/${{ env.BIN_NAME }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BIN_NAME }}-darwin-${{ matrix.arch }}
+          path: ${{ env.BIN_NAME }}-darwin-${{ matrix.arch }}
+
+  release:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create release
+        run: gh release create ${{ github.ref_name }} artifacts/*/* --generate-notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
