@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
@@ -28,7 +29,7 @@ var tagsToRemove = []string{
 	"iframe",
 }
 
-// removeTagsPlugin is a plugin that registers tags to be removed during conversion
+// removeTagsPlugin is a 'converter' plugin that registers tags to be removed during conversion
 type removeTagsPlugin struct {
 	tags []string
 }
@@ -44,9 +45,30 @@ func (p *removeTagsPlugin) Init(conv *converter.Converter) error {
 	return nil
 }
 
+// Create converter with plugins including our tag removal plugin
+var conv = converter.NewConverter(
+	converter.WithPlugins(
+		base.NewBasePlugin(),
+		commonmark.NewCommonmarkPlugin(),
+		&removeTagsPlugin{tags: tagsToRemove},
+	),
+)
+
+// Create a pool for string slices (used in cleanup markdown)
+var stringSlicePool = sync.Pool{
+	New: func() any {
+		slice := make([]string, 0, 1024)
+		return &slice
+	},
+}
+
 // FetchAndConvert fetches the URL and converts its HTML content to Markdown.
 // It removes common non-content elements and preserves links with absolute URLs.
-func FetchAndConvert(ctx context.Context, rawURL string, timeout time.Duration) (string, error) {
+func FetchAndConvert(
+	ctx context.Context,
+	rawURL string,
+	timeout time.Duration,
+) (string, error) {
 	// Validate URL
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -99,15 +121,6 @@ func convertHTMLToMarkdown(r io.Reader, baseURL *url.URL) (string, error) {
 	// Build domain string for absolute URL resolution
 	domain := fmt.Sprintf("%s://%s", baseURL.Scheme, baseURL.Host)
 
-	// Create converter with plugins including our tag removal plugin
-	conv := converter.NewConverter(
-		converter.WithPlugins(
-			base.NewBasePlugin(),
-			commonmark.NewCommonmarkPlugin(),
-			&removeTagsPlugin{tags: tagsToRemove},
-		),
-	)
-
 	// Convert HTML to Markdown with domain for absolute URL resolution
 	markdownBytes, err := conv.ConvertReader(r, converter.WithDomain(domain))
 	if err != nil {
@@ -129,7 +142,7 @@ func isHTMLContentType(contentType string) bool {
 // cleanupMarkdown removes excessive blank lines from the markdown output
 func cleanupMarkdown(markdown string) string {
 	lines := strings.Split(markdown, "\n")
-	var result []string
+	result := *stringSlicePool.Get().(*[]string)
 	blankCount := 0
 
 	for _, line := range lines {
@@ -145,5 +158,9 @@ func cleanupMarkdown(markdown string) string {
 		}
 	}
 
-	return strings.TrimSpace(strings.Join(result, "\n"))
+	cleanMd := strings.TrimSpace(strings.Join(result, "\n"))
+	result = result[:0]
+	stringSlicePool.Put(&result)
+
+	return cleanMd
 }
