@@ -1,6 +1,6 @@
 # webfetch-mcp
 
-MCP server that fetches URLs and converts HTML to clean Markdown.
+MCP server that fetches URLs and converts HTML or PDF content to clean Markdown.
 
 ## Quick Start
 
@@ -59,12 +59,16 @@ Then configure your MCP client:
 
 ## Tool: `webfetch`
 
-Fetches a URL and converts its HTML content to Markdown.
+Fetches a URL and converts its HTML or PDF content to Markdown.
+
+**Supported Content Types:**
+- HTML (`text/html`, `application/xhtml+xml`)
+- PDF (`application/pdf`) - max 100MB
 
 **Features:**
-- Removes non-content elements: `nav`, `header`, `footer`, `aside`, `script`, `style`, `form`, `button`, `iframe`, `noscript`
-- Resolves relative URLs to absolute
-- Cleans up excessive whitespace
+- Removes non-content elements (HTML): `nav`, `header`, `footer`, `aside`, `script`, `style`, `form`, `button`, `iframe`, `noscript`
+- Resolves relative URLs to absolute (HTML)
+- Extracts text with page separators (PDF)
 
 **Input:**
 
@@ -85,6 +89,19 @@ Fetches a URL and converts its HTML content to Markdown.
 ```
 
 **Output:** Clean Markdown text of the page content. If the content exceeds `max_content_tokens`, it is truncated and ends with `... (truncated)`.
+
+For PDF files, the output includes page headers and separators:
+```markdown
+## Page 1
+
+[text from page 1]
+
+---
+
+## Page 2
+
+[text from page 2]
+```
 
 ## Command-Line Options
 

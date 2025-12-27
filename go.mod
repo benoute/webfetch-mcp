@@ -1,9 +1,10 @@
 module github.com/benoute/webfetch
 
-go 1.23.0
+go 1.24.1
 
 require (
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.3.0
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/modelcontextprotocol/go-sdk v1.1.0
 	github.com/rs/cors v1.11.1
 )

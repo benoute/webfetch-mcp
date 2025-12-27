@@ -26,7 +26,7 @@ func setupMCPServer() *mcp.Server {
 	// Add webfetch tool
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "webfetch",
-		Description: "Fetches a URL and converts its HTML content to Markdown.",
+		Description: "Fetches a URL and converts its HTML or PDF content to Markdown.",
 	}, func(
 		ctx context.Context,
 		req *mcp.CallToolRequest,

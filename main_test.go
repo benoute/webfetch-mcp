@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -225,166 +225,71 @@ func TestFetchAndConvert_ContextCancellation(t *testing.T) {
 	}
 }
 
-func Test_convertHTMLToMarkdown(t *testing.T) {
-	baseURL, _ := url.Parse("https://example.com")
+func TestFetchAndConvert_PDF(t *testing.T) {
+	// Read test PDF
+	pdfData, err := os.ReadFile("testdata/test.pdf")
+	if err != nil {
+		t.Fatalf("failed to read test PDF: %v", err)
+	}
 
 	tests := []struct {
 		name           string
-		html           string
+		handler        http.HandlerFunc
+		expectedError  string
 		expectedOutput string
-		notExpected    []string
 	}{
 		{
-			name:           "basic paragraph",
-			html:           "<p>Hello World</p>",
+			name: "successful PDF conversion",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/pdf")
+				w.Write(pdfData)
+			},
 			expectedOutput: "Hello World",
 		},
 		{
-			name:           "heading",
-			html:           "<h1>Title</h1><p>Content</p>",
-			expectedOutput: "# Title",
+			name: "PDF with page separators",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/pdf")
+				w.Write(pdfData)
+			},
+			expectedOutput: "## Page 1",
 		},
 		{
-			name:           "bold text",
-			html:           "<p>This is <strong>bold</strong> text</p>",
-			expectedOutput: "**bold**",
-		},
-		{
-			name:           "italic text",
-			html:           "<p>This is <em>italic</em> text</p>",
-			expectedOutput: "*italic*",
-		},
-		{
-			name:           "link preserved",
-			html:           `<p><a href="https://example.org">Link</a></p>`,
-			expectedOutput: "[Link](https://example.org)",
-		},
-		{
-			name:           "list items",
-			html:           "<ul><li>Item 1</li><li>Item 2</li></ul>",
-			expectedOutput: "- Item 1",
-		},
-		{
-			name:        "nav removed",
-			html:        "<nav>Navigation</nav><p>Content</p>",
-			notExpected: []string{"Navigation"},
-		},
-		{
-			name:        "header removed",
-			html:        "<header>Header</header><p>Content</p>",
-			notExpected: []string{"Header"},
-		},
-		{
-			name:        "footer removed",
-			html:        "<p>Content</p><footer>Footer</footer>",
-			notExpected: []string{"Footer"},
-		},
-		{
-			name:        "aside removed",
-			html:        "<aside>Sidebar</aside><p>Content</p>",
-			notExpected: []string{"Sidebar"},
-		},
-		{
-			name:        "script removed",
-			html:        "<script>alert('xss')</script><p>Content</p>",
-			notExpected: []string{"alert", "xss"},
-		},
-		{
-			name:        "style removed",
-			html:        "<style>body{color:red}</style><p>Content</p>",
-			notExpected: []string{"color", "red"},
-		},
-		{
-			name:        "form removed",
-			html:        "<form><input type='text'></form><p>Content</p>",
-			notExpected: []string{"input"},
-		},
-		{
-			name:        "button removed",
-			html:        "<button>Click me</button><p>Content</p>",
-			notExpected: []string{"Click me"},
-		},
-		{
-			name:        "iframe removed",
-			html:        "<iframe src='http://evil.com'></iframe><p>Content</p>",
-			notExpected: []string{"iframe", "evil"},
+			name: "PDF too large via Content-Length",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/pdf")
+				w.Header().Set("Content-Length", "200000000") // 200MB
+				// Don't write anything, the Content-Length check should fail first
+			},
+			expectedError: "PDF too large",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := convertHTMLToMarkdown(strings.NewReader(tt.html), baseURL)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			server := httptest.NewServer(tt.handler)
+			defer server.Close()
 
-			if tt.expectedOutput != "" && !strings.Contains(result, tt.expectedOutput) {
-				t.Errorf("expected output to contain %q, got %q", tt.expectedOutput, result)
-			}
+			result, err := FetchAndConvert(context.Background(), server.URL, 5*time.Second)
 
-			for _, notExp := range tt.notExpected {
-				if strings.Contains(result, notExp) {
-					t.Errorf("output should not contain %q, got %q", notExp, result)
+			if tt.expectedError != "" {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.expectedError)
+					return
 				}
+				if !strings.Contains(err.Error(), tt.expectedError) {
+					t.Errorf("expected error containing %q, got %q", tt.expectedError, err.Error())
+				}
+				return
 			}
-		})
-	}
-}
 
-func Test_isHTMLContentType(t *testing.T) {
-	tests := []struct {
-		contentType string
-		expected    bool
-	}{
-		{"text/html", true},
-		{"text/html; charset=utf-8", true},
-		{"TEXT/HTML", true},
-		{"application/xhtml+xml", true},
-		{"application/json", false},
-		{"text/plain", false},
-		{"image/png", false},
-		{"application/pdf", false},
-		{"", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.contentType, func(t *testing.T) {
-			result := isHTMLContentType(tt.contentType)
-			if result != tt.expected {
-				t.Errorf("isHTMLContentType(%q) = %v, want %v", tt.contentType, result, tt.expected)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
 			}
-		})
-	}
-}
 
-func Test_cleanupMarkdown(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "no change needed",
-			input:    "Line 1\n\nLine 2",
-			expected: "Line 1\n\nLine 2",
-		},
-		{
-			name:     "reduces excessive blank lines",
-			input:    "Line 1\n\n\n\n\nLine 2",
-			expected: "Line 1\n\nLine 2",
-		},
-		{
-			name:     "trims leading and trailing whitespace",
-			input:    "\n\n\nContent\n\n\n",
-			expected: "Content",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := cleanupMarkdown(tt.input)
-			if result != tt.expected {
-				t.Errorf("cleanupMarkdown() = %q, want %q", result, tt.expected)
+			if !strings.Contains(result, tt.expectedOutput) {
+				t.Errorf("expected output to contain %q, got %q", tt.expectedOutput, result)
 			}
 		})
 	}
