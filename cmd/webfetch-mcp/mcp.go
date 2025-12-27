@@ -14,9 +14,9 @@ const (
 )
 
 type webfetchToolInput struct {
-	URL              string `json:"url" jsonschema:"required" jsonschema_description:"The URL to fetch"`
-	Timeout          string `json:"timeout,omitempty" jsonschema_description:"Request timeout (default: 5s)"`
-	MaxContentTokens int    `json:"max_content_tokens,omitempty" jsonschema_description:"Maximum content length - truncated if exceeded (default: 100000)"`
+	URL              string `json:"url" jsonschema:"The URL to fetch (required)"`
+	Timeout          string `json:"timeout,omitempty" jsonschema:"Request timeout (default: 5s)"`
+	MaxContentTokens int    `json:"max_content_tokens,omitempty" jsonschema:"Maximum content length - truncated if exceeded (default: 100000)"`
 }
 
 // setupMCPServer creates and configures the MCP server with the webfetch tool
