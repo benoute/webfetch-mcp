@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/benoute/webfetch"
+	"github.com/benoute/webfetch-mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

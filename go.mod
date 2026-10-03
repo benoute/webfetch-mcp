@@ -1,4 +1,4 @@
-module github.com/benoute/webfetch
+module github.com/benoute/webfetch-mcp
 
 go 1.24.1
 
