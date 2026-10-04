@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/benoute/webfetch-mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/rs/cors"
 )
@@ -113,6 +114,8 @@ func main() {
 	cfg, _ := parseFlags(flag.CommandLine, os.Args[1:]) // CommandLine exits on error
 
 	logger := log.New(os.Stdout, "", 0)
+
+	webfetch.UserAgent = "webfetch-mcp/" + buildVersion()
 
 	// Create a server with the webfetch tool
 	server := setupMCPServer()

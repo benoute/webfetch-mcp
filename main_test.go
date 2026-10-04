@@ -305,3 +305,35 @@ func TestFetchAndConvert_PDF(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchAndConvert_UserAgent(t *testing.T) {
+	var got string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get("User-Agent")
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte("<p>ok</p>"))
+	}))
+	defer server.Close()
+
+	t.Run("default", func(t *testing.T) {
+		if _, err := FetchAndConvert(context.Background(), server.URL, 5*time.Second); err != nil {
+			t.Fatal(err)
+		}
+		if got != "webfetch-mcp" {
+			t.Errorf("User-Agent = %q, want %q", got, "webfetch-mcp")
+		}
+	})
+
+	t.Run("override", func(t *testing.T) {
+		prev := UserAgent
+		UserAgent = "webfetch-mcp/v9.9.9"
+		t.Cleanup(func() { UserAgent = prev })
+
+		if _, err := FetchAndConvert(context.Background(), server.URL, 5*time.Second); err != nil {
+			t.Fatal(err)
+		}
+		if got != "webfetch-mcp/v9.9.9" {
+			t.Errorf("User-Agent = %q, want %q", got, "webfetch-mcp/v9.9.9")
+		}
+	})
+}

@@ -21,7 +21,7 @@ type webfetchToolInput struct {
 
 // setupMCPServer creates and configures the MCP server with the webfetch tool
 func setupMCPServer() *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "webfetch", Version: "v1.0.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "webfetch", Version: buildVersion()}, nil)
 
 	// Add webfetch tool
 	mcp.AddTool(server, &mcp.Tool{

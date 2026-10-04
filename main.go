@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+// UserAgent is the User-Agent header sent on every fetch.
+// Set it once before the first call to FetchAndConvert; it is not safe to
+// change concurrently with fetches.
+var UserAgent = "webfetch-mcp"
+
 // FetchAndConvert fetches the URL and converts its HTML or PDF content to Markdown.
 // It removes common non-content elements from HTML and preserves links with absolute URLs.
 // For PDFs, it extracts text with page separators.
@@ -36,8 +41,7 @@ func FetchAndConvert(
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
-	// Set a reasonable User-Agent
-	req.Header.Set("User-Agent", "webfetch/1.0")
+	req.Header.Set("User-Agent", UserAgent)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/pdf")
 
 	// Fetch the URL
