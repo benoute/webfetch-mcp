@@ -213,6 +213,7 @@ func TestHTTP_DNSRebindingGuard(t *testing.T) {
 		{"evil.example:" + port, http.StatusForbidden},
 		{"mcp.example.com", http.StatusForbidden},
 		{"localhost:" + port, http.StatusOK},
+		{"localhost", http.StatusOK}, // README: same-host reverse proxy workaround
 		{"127.0.0.1:" + port, http.StatusOK},
 	}
 	for _, tt := range tests {
