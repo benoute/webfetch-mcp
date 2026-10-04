@@ -170,6 +170,17 @@ func TestFetchAndConvert_InvalidURL(t *testing.T) {
 			url:           "",
 			expectedError: "missing scheme or host",
 		},
+		{
+			// Go 1.26+ (go directive ≥ 1.26): url.Parse rejects colons in host.
+			name:          "colon in host",
+			url:           "http://localhost:80:80/",
+			expectedError: "invalid URL",
+		},
+		{
+			name:          "unbracketed IPv6 host",
+			url:           "http://::1/",
+			expectedError: "invalid URL",
+		},
 	}
 
 	for _, tt := range tests {
