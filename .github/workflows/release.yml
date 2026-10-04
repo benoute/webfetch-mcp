@@ -1,86 +1,72 @@
 name: Release
 
-env:
-  BIN_NAME: "webfetch-mcp"
-
 on:
   push:
     tags:
       - "v*"
 
+env:
+  BIN_NAME: "webfetch-mcp"
+
+permissions:
+  contents: read
+
 jobs:
-  build-linux:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.25"
-
-      - name: Set up Zig
-        uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.15.2
-
-      - name: Build static binary
-        run: |
-          TARGET=${{ matrix.arch == 'amd64' && 'x86_64-linux-musl' || 'aarch64-linux-musl' }}
-          export CGO_ENABLED=1
-          export CC="zig cc -target $TARGET"
-          export CXX="zig c++ -target $TARGET"
-          export GOOS=linux
-          export GOARCH=${{ matrix.arch }}
-          go build -ldflags '-linkmode external -extldflags "-static"' -o ${{ env.BIN_NAME }}-linux-${{ matrix.arch }} ./cmd/${{ env.BIN_NAME }}
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.BIN_NAME }}-linux-${{ matrix.arch }}
-          path: ${{ env.BIN_NAME }}-linux-${{ matrix.arch }}
-
-  build-macos:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
         include:
-          - os: macos-15-intel
-            arch: amd64
-          - os: macos-latest
-            arch: arm64
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: "1.25"
+          go-version: "1.27.x"
+          check-latest: true
 
-      - name: Build binary
-        run: go build -o ${{ env.BIN_NAME }}-darwin-${{ matrix.arch }} ./cmd/${{ env.BIN_NAME }}
+      # Pure Go (no cgo): linux binaries are static and run on glibc and musl (Alpine).
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          out="$BIN_NAME-$GOOS-$GOARCH"
+          go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "$out" "./cmd/$BIN_NAME"
+          file "$out"
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: ${{ env.BIN_NAME }}-darwin-${{ matrix.arch }}
-          path: ${{ env.BIN_NAME }}-darwin-${{ matrix.arch }}
+          name: ${{ env.BIN_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.BIN_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
 
   release:
-    needs: [build-linux, build-macos]
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
+
       - name: Create release
-        run: gh release create ${{ github.ref_name }} artifacts/*/* --generate-notes
+        run: gh release create "$TAG" artifacts/*/* --generate-notes
         env:
+          TAG: ${{ github.ref_name }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call: # reused by release.yml as its test gate
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: "1.27.x"
+          check-latest: true
+
+      - name: Check go-version matches go.mod
+        run: |
+          want=$(sed -n 's/^go \([0-9]*\.[0-9]*\).*/\1/p' go.mod)
+          lines=$(grep -HnE '^[[:space:]]*go-version:' .github/workflows/*.yml)
+          [ -n "$lines" ] || { echo "::error::no go-version in workflows"; exit 1; }
+          bad=$(printf '%s\n' "$lines" | grep -v "go-version: \"$want.x\"" || true)
+          if [ -n "$bad" ]; then
+            printf '%s\n' "$bad" | while IFS= read -r l; do
+              echo "::error file=${l%%:*}::go-version must be \"$want.x\" (go.mod: go $want): $l"
+            done
+            exit 1
+          fi
+
+      - name: gofmt
+        run: |
+          out=$(gofmt -l .)
+          [ -z "$out" ] || { echo "::error::files need gofmt:"; echo "$out"; exit 1; }
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
