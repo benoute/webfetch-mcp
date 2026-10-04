@@ -1,7 +1,6 @@
 package webfetch
 
 import (
-	// "bytes"
 	"fmt"
 	"io"
 	"net/url"

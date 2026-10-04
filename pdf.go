@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"runtime"
 	"strings"
 	"sync"
@@ -68,7 +69,7 @@ func extractPageText(page pdf.Page, buf *bytes.Buffer) {
 		}
 
 		// Check if on different line (Y position changed significantly)
-		if abs(t.Y-lastText.Y) > 1 {
+		if math.Abs(t.Y-lastText.Y) > 1 {
 			buf.WriteString("\n")
 			buf.WriteString(t.S)
 			lastText = t
@@ -82,10 +83,7 @@ func extractPageText(page pdf.Page, buf *bytes.Buffer) {
 
 		// Use a fraction of font size as threshold for detecting word gaps
 		// A gap of ~20% of font size typically indicates a space
-		threshold := lastText.FontSize * 0.2
-		if threshold < 1 {
-			threshold = 1
-		}
+		threshold := max(lastText.FontSize*0.2, 1)
 
 		if gap > threshold {
 			buf.WriteString(" ")
@@ -94,14 +92,6 @@ func extractPageText(page pdf.Page, buf *bytes.Buffer) {
 		buf.WriteString(t.S)
 		lastText = t
 	}
-}
-
-// abs returns the absolute value of a float64
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
 }
 
 // convertPDFToMarkdown extracts text from a PDF and formats it as markdown
@@ -164,7 +154,6 @@ func convertPDFToMarkdown(r io.Reader, contentLength int64) (string, error) {
 	page := 1
 
 	var wg sync.WaitGroup
-	wg.Add(numWorkers)
 
 	for i := range numWorkers {
 		count := pagesPerWorker
@@ -172,12 +161,12 @@ func convertPDFToMarkdown(r io.Reader, contentLength int64) (string, error) {
 			count++ // distribute extra pages to first workers
 		}
 
-		go func(workerIdx int, pageStart int, pageEnd int) {
-			defer wg.Done()
+		pageStart, pageEnd := page, page+count
+		wg.Go(func() {
 			workerBuf := pageBufferPool.Get().(*bytes.Buffer)
 			workerBuf.Reset()
 
-			// Process pages in order: startPage[workerIdx] to startPage[workerIdx+1]-1
+			// Process pages in order: [pageStart, pageEnd)
 			for pageNum := pageStart; pageNum < pageEnd; pageNum++ {
 				if pageNum > pageStart {
 					workerBuf.WriteString("\n\n---\n\n")
@@ -192,10 +181,10 @@ func convertPDFToMarkdown(r io.Reader, contentLength int64) (string, error) {
 				}
 			}
 
-			workerBuffers[workerIdx] = workerBuf
-		}(i, page, page+count)
+			workerBuffers[i] = workerBuf
+		})
 
-		page += count
+		page = pageEnd
 	}
 
 	wg.Wait()
