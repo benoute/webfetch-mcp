@@ -1,6 +1,6 @@
 # webfetch-mcp
 
-MCP server that fetches URLs. It converts HTML or PDF content to clean Markdown and returns JSON content unchanged.
+MCP server that fetches URLs. It converts HTML or PDF content to clean Markdown, returns text unchanged, and returns JSON as structured content.
 
 ## Quick Start
 
@@ -96,20 +96,23 @@ location / {
 
 ## Tool: `fetch`
 
-Fetches a URL. Converts HTML or PDF content to Markdown. Returns JSON as structured content.
+Fetches a URL with HTTP GET. HTML and PDF are converted to Markdown, and text is returned as is, in the text content. A JSON body is in `structuredContent.json`. A non-2xx status is an error result.
 
 **Supported Content Types:**
-- HTML (`text/html`, `application/xhtml+xml`)
-- PDF (`application/pdf`) - max 100MB
-- JSON (`application/json`, `application/*+json` such as `application/problem+json`, and the legacy `text/json`, `application/x-json`, `text/x-json`)
+- HTML (`text/html`, `application/xhtml+xml`) → Markdown
+- PDF (`application/pdf`) → Markdown
+- JSON (`application/json`, `application/*+json` such as `application/problem+json`, and the legacy `text/json`, `application/x-json`, `text/x-json`) → `structuredContent.json`
+- Text (`text/*`, for example `text/plain`, `text/markdown`, `text/csv`) → text, unchanged
 
-JSON streams (`application/json-seq`, `application/x-ndjson`, `application/jsonl`) and other types (`text/plain`, `application/octet-stream`, …) are not supported. The server does not examine the body to find the type.
+JSON streams (`application/json-seq`, `application/x-ndjson`, `application/jsonl`), `text/event-stream` and other types (`image/png`, `application/octet-stream`, …) are not supported. The server does not examine the body to find the type.
+
+Bodies are limited to 100 MiB. Text is read as UTF-8.
 
 **Features:**
 - Removes non-content elements (HTML): `nav`, `header`, `footer`, `aside`, `script`, `style`, `form`, `button`, `iframe`, `noscript`
-- Resolves relative URLs to absolute (HTML)
+- Resolves relative URLs to absolute, against the final URL after redirects (HTML)
 - Extracts text with page separators (PDF)
-- Returns JSON as `structuredContent`, with no Markdown conversion (JSON)
+- Returns JSON in `structuredContent`, with the exact value of the body (JSON)
 
 **Input:**
 
@@ -131,24 +134,49 @@ JSON streams (`application/json-seq`, `application/x-ndjson`, `application/jsonl
 
 **Output:**
 
-| Response                                   | Tool result                                                                 |
-|--------------------------------------------|-----------------------------------------------------------------------------|
-| 2xx, HTML or PDF                           | Text content: Markdown                                                      |
-| 2xx, JSON                                  | `"content": []` and `"structuredContent"`: the JSON value (object, array or primitive) |
-| 2xx, JSON media type but body is not valid JSON | Text content: `[invalid JSON from server, <media type>]` line, then the body |
-| Not 2xx                                    | Error: `unexpected status code: <code>`. For a JSON or `text/plain` body, the first 4 KiB of the body follow (`: <body>`). |
-| Other content type                         | Error: `unsupported content type: …`                                       |
+Every result for a URL that answered has `structuredContent`. The tool declares an `outputSchema` for it.
 
-Example result for a JSON response:
+| Field         | Type           | Present          | Meaning                                           |
+|---------------|----------------|------------------|---------------------------------------------------|
+| `status`      | integer        | always           | HTTP status code                                  |
+| `contentType` | string \| null | always           | `Content-Type` header as received (`null` if absent) |
+| `json`        | any JSON       | JSON body only   | Parsed body (not when cut to `max_content_bytes`) |
+| `truncated`   | `true`         | when text is cut | Text in `content` was cut to `max_content_bytes`  |
 
-```json
-{ "content": [], "structuredContent": { "id": 1, "name": "x" } }
+| Response                         | `isError` | `content`                                   | `json`         |
+|----------------------------------|-----------|---------------------------------------------|----------------|
+| 2xx JSON                         | no        | `[]`                                        | yes            |
+| 2xx HTML, PDF                    | no        | Markdown                                    | no             |
+| 2xx text                         | no        | text                                        | no             |
+| 2xx JSON type, invalid body      | no        | `[invalid JSON from server, …]` + body      | no             |
+| 2xx empty body                   | no        | `[]`                                        | no             |
+| 2xx other type, or body error    | yes       | error message                               | no             |
+| Not 2xx                          | yes       | `unexpected status code: N` (+ body text)   | JSON body only |
+| No response (DNS, timeout, …)    | yes       | error message, no `structuredContent`       | —              |
+
+Examples:
+
+```jsonc
+// 200 application/json
+{ "content": [],
+  "structuredContent": { "status": 200, "contentType": "application/json; charset=utf-8",
+                         "json": { "id": 1, "name": "x" } } }
+
+// 404 application/json
+{ "isError": true,
+  "content": [{ "type": "text", "text": "unexpected status code: 404" }],
+  "structuredContent": { "status": 404, "contentType": "application/json",
+                         "json": { "message": "Not Found" } } }
+
+// 200 text/html
+{ "content": [{ "type": "text", "text": "# Title\n\nHello" }],
+  "structuredContent": { "status": 200, "contentType": "text/html; charset=utf-8" } }
 ```
 
-The JSON is not copied into a text block. Your MCP client must support `structuredContent` (protocol version 2025-06-18 or later). Some clients that use protocol version 2025-11-25 or earlier accept only a JSON object in `structuredContent`, and can fail with a top-level array or primitive.
+A JSON body is not copied into a text block. Your MCP client must support `structuredContent` (protocol version 2025-06-18 or later).
 
-**`max_content_bytes`:** The limit applies to the Markdown, or to the body bytes for JSON. If the content is larger:
-- Markdown and invalid-JSON text are cut on a UTF-8 character boundary. The text starts with a marker line and ends with `... (truncated)`:
+**`max_content_bytes`:** The limit applies to the Markdown or text, or to the body bytes for JSON. If the content is larger:
+- Markdown and text are cut on a UTF-8 character boundary. The text starts with a marker line and ends with `... (truncated)`, and `structuredContent.truncated` is `true`:
   ```
   [Markdown truncated: 25 bytes > max_content_bytes 10]
   # Title
@@ -157,7 +185,7 @@ The JSON is not copied into a text block. Your MCP client must support `structur
 
   ... (truncated)
   ```
-- JSON is returned as truncated text (marker line `[JSON truncated: …]`), not as `structuredContent`.
+- JSON is returned as truncated text (marker line `[JSON truncated: …]`), not in `structuredContent.json`.
 
 Marker lines and the `... (truncated)` suffix are not counted in the limit.
 
@@ -174,15 +202,6 @@ For PDF files, the output includes page headers and separators:
 [text from page 2]
 ```
 
-### Breaking changes
-
-- The `max_content_tokens` input is removed. Use `max_content_bytes`. A call with `max_content_tokens` fails input validation.
-- The content is not limited by default (was 100000).
-- The default timeout is `10s` (was `5s`).
-- A JSON response is returned as `structuredContent` (was the error `unsupported content type`).
-- All 2xx statuses are success (was 200 only). A JSON or `text/plain` error body is included in the error message.
-- Go library: `FetchAndConvert(ctx, url, timeout) (string, error)` is now `Fetch(ctx, url, timeout) (*Result, error)`. A non-2xx status returns a `*StatusError`. An unsupported type returns an error that wraps `ErrUnsupportedContentType`.
-
 ## Command-Line Options
 
 | Flag              | Default | Description                                                         |
@@ -195,3 +214,4 @@ For PDF files, the output includes page headers and separators:
 make check   # gofmt check, go vet, go test -race, govulncheck (same as CI)
 make fix     # show `go fix` modernization suggestions (not applied)
 ```
+

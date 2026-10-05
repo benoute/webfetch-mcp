@@ -3,7 +3,6 @@ package webfetch
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"math"
 	"runtime"
 	"strings"
@@ -12,22 +11,8 @@ import (
 	"github.com/ledongthuc/pdf"
 )
 
-const (
-	// maxPDFSize is the maximum size of a PDF file that can be processed (100MB)
-	maxPDFSize = 100 * 1024 * 1024
-	// maxConcurrency is the maximum concurrency allowed for extracting pages
-	maxConcurrency = 32
-)
-
-// pdfBufferPool is a pool for reusing byte buffers when reading PDFs
-var pdfBufferPool = sync.Pool{
-	New: func() any {
-		b := bytes.Buffer{}
-		// Pre-allocate 1MB initial capacity
-		b.Grow(1024 * 1024)
-		return &b
-	},
-}
+// maxConcurrency is the maximum concurrency allowed for extracting pages
+const maxConcurrency = 32
 
 // pageBufferPool is a pool for reusing bytes buffers when processing pages
 var pageBufferPool = sync.Pool{
@@ -94,38 +79,9 @@ func extractPageText(page pdf.Page, buf *bytes.Buffer) {
 }
 
 // convertPDFToMarkdown extracts text from a PDF and formats it as markdown
-// with page separators between pages. It limits reading to maxPDFSize bytes.
-func convertPDFToMarkdown(r io.Reader, contentLength int64) (string, error) {
-	// Early rejection if Content-Length header indicates too large
-	if contentLength > maxPDFSize {
-		return "", fmt.Errorf("PDF too large: %d bytes (max %d bytes)", contentLength, maxPDFSize)
-	}
-
-	// Get buffer from pool
-	buf := pdfBufferPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer func() {
-		buf.Reset() // Clear data before returning to pool
-		pdfBufferPool.Put(buf)
-	}()
-
-	// Wrap reader with limit to prevent reading more than maxPDFSize + 1
-	// The +1 allows us to detect if we hit the limit
-	limitedReader := io.LimitReader(r, maxPDFSize+1)
-
-	// Read PDF data into buffer
-	_, err := buf.ReadFrom(limitedReader)
-	if err != nil {
-		return "", fmt.Errorf("failed to read PDF: %w", err)
-	}
-
-	// Check if we hit the limit (read more than maxPDFSize)
-	if buf.Len() > maxPDFSize {
-		return "", fmt.Errorf("PDF too large: exceeds %d bytes", maxPDFSize)
-	}
-
-	data := buf.Bytes()
-
+// with page separators between pages. The caller limits the size of data
+// (see readBody).
+func convertPDFToMarkdown(data []byte) (string, error) {
 	// Create PDF reader from bytes
 	pdfReader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {

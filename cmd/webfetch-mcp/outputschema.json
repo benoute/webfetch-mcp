@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "integer",
+      "description": "HTTP status code."
+    },
+    "contentType": {
+      "type": ["string", "null"],
+      "description": "Content-Type response header as received; null if absent."
+    },
+    "json": {
+      "description": "Parsed JSON body. Present only when the response body is valid JSON and fits max_content_bytes; can be null if the body is null. Other bodies (Markdown from HTML/PDF, text, invalid or cut JSON) are in content[0].text."
+    },
+    "truncated": {
+      "type": "boolean",
+      "description": "true when the body text in content was cut to max_content_bytes. Absent when not cut."
+    }
+  },
+  "required": ["status", "contentType"]
+}

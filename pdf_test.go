@@ -40,7 +40,7 @@ func Test_convertPDFToMarkdown(t *testing.T) {
 		t.Fatalf("failed to read test PDF: %v", err)
 	}
 
-	result, err := convertPDFToMarkdown(bytes.NewReader(data), int64(len(data)))
+	result, err := convertPDFToMarkdown(data)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -64,57 +64,6 @@ func Test_convertPDFToMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(result, "Second Page") {
 		t.Errorf("expected output to contain 'Second Page', got %q", result)
-	}
-}
-
-func Test_convertPDFToMarkdown_SizeLimit(t *testing.T) {
-	tests := []struct {
-		name          string
-		contentLength int64
-		expectedError string
-	}{
-		{
-			name:          "Content-Length exceeds limit",
-			contentLength: 200 * 1024 * 1024, // 200MB
-			expectedError: "PDF too large",
-		},
-		{
-			name:          "Content-Length at limit is ok",
-			contentLength: maxPDFSize,
-			expectedError: "", // Should not error on Content-Length check
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Use empty reader since we're testing Content-Length check
-			_, err := convertPDFToMarkdown(strings.NewReader(""), tt.contentLength)
-
-			if tt.expectedError != "" {
-				if err == nil {
-					t.Errorf("expected error containing %q, got nil", tt.expectedError)
-					return
-				}
-				if !strings.Contains(err.Error(), tt.expectedError) {
-					t.Errorf("expected error containing %q, got %q", tt.expectedError, err.Error())
-				}
-			}
-		})
-	}
-}
-
-func Test_convertPDFToMarkdown_ReadLimitExceeded(t *testing.T) {
-	// Create a reader that claims to have valid content length but provides too much data
-	// This tests the io.LimitReader behavior
-	largeData := make([]byte, maxPDFSize+100)
-
-	_, err := convertPDFToMarkdown(bytes.NewReader(largeData), -1) // -1 means unknown Content-Length
-	if err == nil {
-		t.Error("expected error for oversized PDF, got nil")
-		return
-	}
-	if !strings.Contains(err.Error(), "PDF too large") {
-		t.Errorf("expected 'PDF too large' error, got %q", err.Error())
 	}
 }
 
@@ -174,7 +123,7 @@ func Test_convertPDFToMarkdown_PageOrder(t *testing.T) {
 			prev := runtime.GOMAXPROCS(p)
 			t.Cleanup(func() { runtime.GOMAXPROCS(prev) })
 
-			result, err := convertPDFToMarkdown(bytes.NewReader(data), int64(len(data)))
+			result, err := convertPDFToMarkdown(data)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
