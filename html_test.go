@@ -112,13 +112,16 @@ func Test_convertHTMLToMarkdown(t *testing.T) {
 	}
 }
 
-func Test_isHTMLContentType(t *testing.T) {
+func Test_isHTMLMediaType(t *testing.T) {
 	tests := []struct {
 		contentType string
 		expected    bool
 	}{
 		{"text/html", true},
 		{"text/html; charset=utf-8", true},
+		{" text/html ;charset=utf-8", true},
+		{"text/htmlx", false},
+		{"application/xhtml+xml+json", false},
 		{"TEXT/HTML", true},
 		{"application/xhtml+xml", true},
 		{"application/json", false},
@@ -130,9 +133,9 @@ func Test_isHTMLContentType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.contentType, func(t *testing.T) {
-			result := isHTMLContentType(tt.contentType)
+			result := isHTMLMediaType(mediaType(tt.contentType))
 			if result != tt.expected {
-				t.Errorf("isHTMLContentType(%q) = %v, want %v", tt.contentType, result, tt.expected)
+				t.Errorf("isHTMLMediaType(mediaType(%q)) = %v, want %v", tt.contentType, result, tt.expected)
 			}
 		})
 	}

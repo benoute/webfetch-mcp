@@ -38,10 +38,9 @@ var pageBufferPool = sync.Pool{
 	},
 }
 
-// isPDFContentType checks if the content type indicates PDF content
-func isPDFContentType(contentType string) bool {
-	ct := strings.ToLower(contentType)
-	return strings.Contains(ct, "application/pdf")
+// isPDFMediaType reports whether mt (from mediaType) is the PDF media type.
+func isPDFMediaType(mt string) bool {
+	return mt == "application/pdf"
 }
 
 // extractPageText extracts text from a PDF page by analyzing character positions

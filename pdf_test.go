@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func Test_isPDFContentType(t *testing.T) {
+func Test_isPDFMediaType(t *testing.T) {
 	tests := []struct {
 		contentType string
 		expected    bool
@@ -17,6 +17,7 @@ func Test_isPDFContentType(t *testing.T) {
 		{"application/pdf", true},
 		{"application/pdf; charset=binary", true},
 		{"APPLICATION/PDF", true},
+		{"application/pdfx", false},
 		{"text/html", false},
 		{"application/json", false},
 		{"", false},
@@ -24,9 +25,9 @@ func Test_isPDFContentType(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.contentType, func(t *testing.T) {
-			result := isPDFContentType(tt.contentType)
+			result := isPDFMediaType(mediaType(tt.contentType))
 			if result != tt.expected {
-				t.Errorf("isPDFContentType(%q) = %v, want %v", tt.contentType, result, tt.expected)
+				t.Errorf("isPDFMediaType(mediaType(%q)) = %v, want %v", tt.contentType, result, tt.expected)
 			}
 		})
 	}

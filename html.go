@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
@@ -50,10 +49,9 @@ var htmlConverter = converter.NewConverter(
 	),
 )
 
-// isHTMLContentType checks if the content type indicates HTML content
-func isHTMLContentType(contentType string) bool {
-	ct := strings.ToLower(contentType)
-	return strings.Contains(ct, "text/html") || strings.Contains(ct, "application/xhtml+xml")
+// isHTMLMediaType reports whether mt (from mediaType) is an HTML media type.
+func isHTMLMediaType(mt string) bool {
+	return mt == "text/html" || mt == "application/xhtml+xml"
 }
 
 // convertHTMLToMarkdown converts HTML content to Markdown, removing non-content elements

@@ -1,6 +1,6 @@
 # webfetch-mcp
 
-MCP server that fetches URLs and converts HTML or PDF content to clean Markdown.
+MCP server that fetches URLs. It converts HTML or PDF content to clean Markdown and returns JSON content unchanged.
 
 ## Quick Start
 
@@ -96,36 +96,70 @@ location / {
 
 ## Tool: `fetch`
 
-Fetches a URL and converts its HTML or PDF content to Markdown.
+Fetches a URL. Converts HTML or PDF content to Markdown. Returns JSON as structured content.
 
 **Supported Content Types:**
 - HTML (`text/html`, `application/xhtml+xml`)
 - PDF (`application/pdf`) - max 100MB
+- JSON (`application/json`, `application/*+json` such as `application/problem+json`, and the legacy `text/json`, `application/x-json`, `text/x-json`)
+
+JSON streams (`application/json-seq`, `application/x-ndjson`, `application/jsonl`) and other types (`text/plain`, `application/octet-stream`, …) are not supported. The server does not examine the body to find the type.
 
 **Features:**
 - Removes non-content elements (HTML): `nav`, `header`, `footer`, `aside`, `script`, `style`, `form`, `button`, `iframe`, `noscript`
 - Resolves relative URLs to absolute (HTML)
 - Extracts text with page separators (PDF)
+- Returns JSON as `structuredContent`, with no Markdown conversion (JSON)
 
 **Input:**
 
-| Parameter            | Type   | Required | Default  | Description                                      |
-|----------------------|--------|----------|----------|--------------------------------------------------|
-| `url`                | string | Yes      | -        | The URL to fetch                                 |
-| `timeout`            | string | No       | `5s`     | Request timeout (e.g., `10s`, `1m`)              |
-| `max_content_tokens` | int    | No       | `100000` | Maximum content length (truncated if exceeded)   |
+| Parameter           | Type   | Required | Default  | Description                                                    |
+|---------------------|--------|----------|----------|----------------------------------------------------------------|
+| `url`               | string | Yes      | -        | The URL to fetch                                               |
+| `timeout`           | string | No       | `10s`    | Request timeout (e.g., `10s`, `1m`)                            |
+| `max_content_bytes` | int    | No       | no limit | Maximum content size in bytes. `0` means no limit. See below.  |
 
 **Example:**
 
 ```json
 {
-  "url": "https://example.com",
+  "url": "https://api.github.com/repos/benoute/webfetch-mcp",
   "timeout": "10s",
-  "max_content_tokens": 50000
+  "max_content_bytes": 50000
 }
 ```
 
-**Output:** Clean Markdown text of the page content. If the content exceeds `max_content_tokens`, it is truncated and ends with `... (truncated)`.
+**Output:**
+
+| Response                                   | Tool result                                                                 |
+|--------------------------------------------|-----------------------------------------------------------------------------|
+| 2xx, HTML or PDF                           | Text content: Markdown                                                      |
+| 2xx, JSON                                  | `"content": []` and `"structuredContent"`: the JSON value (object, array or primitive) |
+| 2xx, JSON media type but body is not valid JSON | Text content: `[invalid JSON from server, <media type>]` line, then the body |
+| Not 2xx                                    | Error: `unexpected status code: <code>`. For a JSON or `text/plain` body, the first 4 KiB of the body follow (`: <body>`). |
+| Other content type                         | Error: `unsupported content type: …`                                       |
+
+Example result for a JSON response:
+
+```json
+{ "content": [], "structuredContent": { "id": 1, "name": "x" } }
+```
+
+The JSON is not copied into a text block. Your MCP client must support `structuredContent` (protocol version 2025-06-18 or later). Some clients that use protocol version 2025-11-25 or earlier accept only a JSON object in `structuredContent`, and can fail with a top-level array or primitive.
+
+**`max_content_bytes`:** The limit applies to the Markdown, or to the body bytes for JSON. If the content is larger:
+- Markdown and invalid-JSON text are cut on a UTF-8 character boundary. The text starts with a marker line and ends with `... (truncated)`:
+  ```
+  [Markdown truncated: 25 bytes > max_content_bytes 10]
+  # Title
+
+  H
+
+  ... (truncated)
+  ```
+- JSON is returned as truncated text (marker line `[JSON truncated: …]`), not as `structuredContent`.
+
+Marker lines and the `... (truncated)` suffix are not counted in the limit.
 
 For PDF files, the output includes page headers and separators:
 ```markdown
@@ -139,6 +173,15 @@ For PDF files, the output includes page headers and separators:
 
 [text from page 2]
 ```
+
+### Breaking changes
+
+- The `max_content_tokens` input is removed. Use `max_content_bytes`. A call with `max_content_tokens` fails input validation.
+- The content is not limited by default (was 100000).
+- The default timeout is `10s` (was `5s`).
+- A JSON response is returned as `structuredContent` (was the error `unsupported content type`).
+- All 2xx statuses are success (was 200 only). A JSON or `text/plain` error body is included in the error message.
+- Go library: `FetchAndConvert(ctx, url, timeout) (string, error)` is now `Fetch(ctx, url, timeout) (*Result, error)`. A non-2xx status returns a `*StatusError`. An unsupported type returns an error that wraps `ErrUnsupportedContentType`.
 
 ## Command-Line Options
 

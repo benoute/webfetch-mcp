@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestFetchAndConvert(t *testing.T) {
+func TestFetch(t *testing.T) {
 	tests := []struct {
 		name           string
 		handler        http.HandlerFunc
@@ -96,12 +96,12 @@ func TestFetchAndConvert(t *testing.T) {
 			expectedOutput: "/page",
 		},
 		{
-			name: "non-HTML content type returns error",
+			name: "unsupported content type returns error",
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(`{"error": "not html"}`))
+				w.Header().Set("Content-Type", "text/csv")
+				w.Write([]byte("a,b\n1,2\n"))
 			},
-			expectedError: "unsupported content type",
+			expectedError: "unsupported content type: text/csv (expected HTML, PDF or JSON)",
 		},
 		{
 			name: "404 status returns error",
@@ -124,7 +124,7 @@ func TestFetchAndConvert(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			result, err := FetchAndConvert(context.Background(), server.URL, 5*time.Second)
+			result, err := Fetch(context.Background(), server.URL, 5*time.Second)
 
 			if tt.expectedError != "" {
 				if err == nil {
@@ -142,14 +142,17 @@ func TestFetchAndConvert(t *testing.T) {
 				return
 			}
 
-			if !strings.Contains(result, tt.expectedOutput) {
-				t.Errorf("expected output to contain %q, got %q", tt.expectedOutput, result)
+			if result.Kind != KindMarkdown {
+				t.Errorf("Kind = %q, want %q", result.Kind, KindMarkdown)
+			}
+			if !strings.Contains(result.Text, tt.expectedOutput) {
+				t.Errorf("expected output to contain %q, got %q", tt.expectedOutput, result.Text)
 			}
 		})
 	}
 }
 
-func TestFetchAndConvert_InvalidURL(t *testing.T) {
+func TestFetch_InvalidURL(t *testing.T) {
 	tests := []struct {
 		name          string
 		url           string
@@ -185,7 +188,7 @@ func TestFetchAndConvert_InvalidURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := FetchAndConvert(context.Background(), tt.url, 5*time.Second)
+			_, err := Fetch(context.Background(), tt.url, 5*time.Second)
 			if err == nil {
 				t.Errorf("expected error containing %q, got nil", tt.expectedError)
 				return
@@ -197,7 +200,7 @@ func TestFetchAndConvert_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestFetchAndConvert_Timeout(t *testing.T) {
+func TestFetch_Timeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.Header().Set("Content-Type", "text/html")
@@ -205,7 +208,7 @@ func TestFetchAndConvert_Timeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := FetchAndConvert(context.Background(), server.URL, 10*time.Millisecond)
+	_, err := Fetch(context.Background(), server.URL, 10*time.Millisecond)
 	if err == nil {
 		t.Error("expected timeout error, got nil")
 		return
@@ -219,7 +222,7 @@ func TestFetchAndConvert_Timeout(t *testing.T) {
 	}
 }
 
-func TestFetchAndConvert_ContextCancellation(t *testing.T) {
+func TestFetch_ContextCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
 		w.Header().Set("Content-Type", "text/html")
@@ -230,13 +233,13 @@ func TestFetchAndConvert_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err := FetchAndConvert(ctx, server.URL, 5*time.Second)
+	_, err := Fetch(ctx, server.URL, 5*time.Second)
 	if err == nil {
 		t.Error("expected context cancellation error, got nil")
 	}
 }
 
-func TestFetchAndConvert_PDF(t *testing.T) {
+func TestFetch_PDF(t *testing.T) {
 	// Read test PDF
 	pdfData, err := os.ReadFile("testdata/test.pdf")
 	if err != nil {
@@ -281,7 +284,7 @@ func TestFetchAndConvert_PDF(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			result, err := FetchAndConvert(context.Background(), server.URL, 5*time.Second)
+			result, err := Fetch(context.Background(), server.URL, 5*time.Second)
 
 			if tt.expectedError != "" {
 				if err == nil {
@@ -299,14 +302,17 @@ func TestFetchAndConvert_PDF(t *testing.T) {
 				return
 			}
 
-			if !strings.Contains(result, tt.expectedOutput) {
-				t.Errorf("expected output to contain %q, got %q", tt.expectedOutput, result)
+			if result.Kind != KindMarkdown {
+				t.Errorf("Kind = %q, want %q", result.Kind, KindMarkdown)
+			}
+			if !strings.Contains(result.Text, tt.expectedOutput) {
+				t.Errorf("expected output to contain %q, got %q", tt.expectedOutput, result.Text)
 			}
 		})
 	}
 }
 
-func TestFetchAndConvert_UserAgent(t *testing.T) {
+func TestFetch_UserAgent(t *testing.T) {
 	var got string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.Header.Get("User-Agent")
@@ -316,7 +322,7 @@ func TestFetchAndConvert_UserAgent(t *testing.T) {
 	defer server.Close()
 
 	t.Run("default", func(t *testing.T) {
-		if _, err := FetchAndConvert(context.Background(), server.URL, 5*time.Second); err != nil {
+		if _, err := Fetch(context.Background(), server.URL, 5*time.Second); err != nil {
 			t.Fatal(err)
 		}
 		if got != "webfetch-mcp" {
@@ -329,7 +335,7 @@ func TestFetchAndConvert_UserAgent(t *testing.T) {
 		UserAgent = "webfetch-mcp/v9.9.9"
 		t.Cleanup(func() { UserAgent = prev })
 
-		if _, err := FetchAndConvert(context.Background(), server.URL, 5*time.Second); err != nil {
+		if _, err := Fetch(context.Background(), server.URL, 5*time.Second); err != nil {
 			t.Fatal(err)
 		}
 		if got != "webfetch-mcp/v9.9.9" {
