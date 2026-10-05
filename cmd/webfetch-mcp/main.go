@@ -117,7 +117,7 @@ func main() {
 
 	webfetch.UserAgent = "webfetch-mcp/" + buildVersion()
 
-	// Create a server with the webfetch tool
+	// Create a server with the fetch tool
 	server := setupMCPServer()
 
 	if cfg.HTTPAddr == "" {

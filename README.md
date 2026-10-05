@@ -94,7 +94,7 @@ location / {
 }
 ```
 
-## Tool: `webfetch`
+## Tool: `fetch`
 
 Fetches a URL and converts its HTML or PDF content to Markdown.
 

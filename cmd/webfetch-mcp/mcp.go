@@ -19,13 +19,13 @@ type webfetchToolInput struct {
 	MaxContentTokens int    `json:"max_content_tokens,omitempty" jsonschema:"Maximum content length - truncated if exceeded (default: 100000)"`
 }
 
-// setupMCPServer creates and configures the MCP server with the webfetch tool
+// setupMCPServer creates and configures the MCP server with the fetch tool
 func setupMCPServer() *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "webfetch", Version: buildVersion()}, nil)
 
-	// Add webfetch tool
+	// Add fetch tool
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "webfetch",
+		Name:        "fetch",
 		Description: "Fetches a URL and converts its HTML or PDF content to Markdown.",
 	}, func(
 		ctx context.Context,
